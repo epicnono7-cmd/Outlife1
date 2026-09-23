@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>رووكس - Proximity Voice</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: Tahoma, sans-serif; }
+        body { background-color: #131313; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .container { background: #1c1c1c; padding: 40px 30px; border-radius: 16px; width: 100%; max-width: 400px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); border: 1px solid #2a2a2a; text-align: center; }
+        .logo { font-size: 24px; font-weight: bold; color: #ff3b3b; margin-bottom: 20px; }
+        h2 { font-size: 20px; margin-bottom: 10px; }
+        p { font-size: 13px; color: #888; margin-bottom: 25px; line-height: 1.6; }
+        input { width: 100%; padding: 14px; background: #252525; border: 1px solid #383838; color: #fff; border-radius: 8px; text-align: center; font-size: 22px; letter-spacing: 4px; outline: none; }
+        input:focus { border-color: #ff3b3b; }
+        button { background: #ff3b3b; color: white; border: none; padding: 14px; width: 100%; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold; margin-top: 10px; }
+        button:hover { background: #e03232; }
+        .error-msg { color: #ff5555; font-size: 12px; margin-top: 15px; }
+        .hidden { display: none; }
+        .status-badge { background: rgba(76, 175, 80, 0.1); color: #4CAF50; padding: 10px; border-radius: 6px; margin-bottom: 20px; font-size: 14px; border: 1px solid rgba(76, 175, 80, 0.2); }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="logo">ROVOX 🎙️</div>
+
+        <div id="login-section">
+            <h2>اربط حسابك بروبلوكس</h2>
+            <p>ادخل الكود الظهور أعلى يسار الشاشة في اللعبة لربط المايك وصوت القرب.</p>
+            <input type="text" id="code-input" placeholder="------" maxlength="10">
+            <button id="connect-btn">ربط الحساب</button>
+            <div id="error-msg" class="error-msg"></div>
+        </div>
+
+        <div id="control-section" class="hidden">
+            <div class="status-badge">متصل بنجاح - المايك يعمل 🟢</div>
+            <p id="user-info" style="color: #bbb; margin-bottom: 20px;"></p>
+            <button id="mic-toggle" style="background: #2a2a2a;">كتم الميكروفون 🎤</button>
+            <button id="speaker-toggle" style="background: #2a2a2a;">كتم السماعة 🔊</button>
+        </div>
+    </div>
+
+    <!-- استدعاء Socket.io عبر الـ CDN لحل خطأ 404 نهائياً -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        const socket = io();
+        let localStream;
+        let isMuted = false;
+        let isDeafened = false;
+
+        document.getElementById('connect-btn').onclick = () => {
+            const code = document.getElementById('code-input').value.trim();
+            if (code.length < 5) {
+                document.getElementById('error-msg').innerText = "الرجاء إدخال الكود بشكل صحيح.";
+                return;
+            }
+
+            socket.emit('verify_code', { code }, async (response) => {
+                if (response.success) {
+                    document.getElementById('login-section').classList.add('hidden');
+                    document.getElementById('control-section').classList.remove('hidden');
+                    document.getElementById('user-info').innerText = `معرف المستخدم: ${response.userId}`;
+                    await initAudioEngine();
+                } else {
+                    document.getElementById('error-msg').innerText = response.message;
+                }
+            });
+        };
+
+        async function initAudioEngine() {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+                
+                // حيلة الحفاظ على الشاشة نشطة في الخلفية
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(20000, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.00001, audioCtx.currentTime);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+            } catch (e) {
+                alert("يرجى السماح بالوصول للميكروفون.");
+            }
+        }
+
+        document.getElementById('mic-toggle').onclick = () => {
+            isMuted = !isMuted;
+            if (localStream) localStream.getAudioTracks().forEach(t => t.enabled = !isMuted);
+            document.getElementById('mic-toggle').innerText = isMuted ? "إلغاء كتم الميكروفون ❌" : "كتم الميكروفون 🎤";
+        };
+
+        document.getElementById('speaker-toggle').onclick = () => {
+            isDeafened = !isDeafened;
+            document.querySelectorAll('audio').forEach(a => a.muted = isDeafened);
+            document.getElementById('speaker-toggle').innerText = isDeafened ? "إلغاء كتم السماعة ❌" : "كتم السماعة 🔊";
+        };
+    </script>
+</body>
+</html>
